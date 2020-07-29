@@ -144,7 +144,7 @@ def get_url_info(url_list):
     merger = PdfFileMerger()
     # 对每页的每个新闻做处理
     for i, url in enumerate(url_list):
-        for j in range(0, 1):
+        for j in range(0, 50):
             # 将新闻标题+内容整合，保存为字典
             # temp_info = {}
             r = requests.get(url, headers=headers)
