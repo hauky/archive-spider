@@ -28,6 +28,20 @@ conn = pymysql.connect(
     charset="utf8"
 )
 
+# mysql 插入
+# 插入spider任务表
+insert_task = '''
+INSERT INTO t_spider_task VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+'''
+# 插入spider配置表
+insert_conf = '''
+INSERT INTO t_spider_conf VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+'''
+# 插入spider结果表
+insert_result = '''
+INSERT INTO t_spider_result VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+'''
+
 # pdfkit配置
 confg = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
 
@@ -38,12 +52,12 @@ headers = {
 }
 
 
-# 查找所有栏目的url，并保存
+# 查找所有栏目的url（栏目url），并保存
 def all_urls_list():
     # 获取配置表的id，赋值给结果表
     cur.execute("SELECT id FROM t_spider_conf WHERE domain = %s", spider_url)
-    confid = cur.fetchone()
-    confid = confid['id']
+    conf_id = cur.fetchone()
+    conf_id = conf_id[0]
 
     urls_list = []
     url = spider_url
@@ -55,17 +69,27 @@ def all_urls_list():
     for i in range(1, 9):
         news_heading_url = html.xpath('//*[@id="mytop_3"]/a[' + str(i) + ']/@href')
         news_heading_url = ''.join(news_heading_url)
+        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cur.execute(insert_result, (conf_id, 'index', news_heading_url, '', '', '', time_now, '', '', ''))
         urls_list.append(news_heading_url)
     # print(urls_list)
     # 添加郑大通知公告url(单独的)：
     extra_url = 'http://www16.zzu.edu.cn/msgs/vmsgisapi.dll/vmsglist?mtype=m&lan=101,102,103'
+    time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cur.execute(insert_result, (conf_id, 'index', extra_url, '', '', '', time_now, '', '', ''))
+
     urls_list.append(extra_url)
 
     return urls_list
 
 
-# 查找每个栏目下的每一页的url，并保存
+# 查找每个栏目下的每一页的url（列表url），并保存
 def get_url_list(url):
+    # 获取配置表的id，赋值给结果表
+    cur.execute("SELECT id FROM t_spider_conf WHERE domain = %s", spider_url)
+    conf_id = cur.fetchone()
+    conf_id = conf_id[0]
+
     url_list = []
     r = requests.get(url, headers=headers)
     r.encoding = 'UTF-8'
@@ -84,12 +108,19 @@ def get_url_list(url):
     for i in range(1, max_page + 1):
         # print('爬取网上新闻的第{}页......'.format(i))
         temp_url = url + '&tts=&tops=&pn=' + str(i)
+        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cur.execute(insert_result, (conf_id, 'list', temp_url, '', '', '', time_now, '', '', ''))
         url_list.append(temp_url)
     return url_list
 
 
-# 查找每一页url里的新闻的url，并保存
+# 查找每一页url里的新闻的url（细节url），并保存
 def get_url_info(url_list):
+    # 获取配置表的id，赋值给结果表
+    cur.execute("SELECT id FROM t_spider_conf WHERE domain = %s", spider_url)
+    conf_id = cur.fetchone()
+    conf_id = conf_id[0]
+
     # 新闻数累加器
     sum_i = 0
 
@@ -113,7 +144,7 @@ def get_url_info(url_list):
     merger = PdfFileMerger()
     # 对每页的每个新闻做处理
     for i, url in enumerate(url_list):
-        for j in range(0, 50):
+        for j in range(0, 1):
             # 将新闻标题+内容整合，保存为字典
             # temp_info = {}
             r = requests.get(url, headers=headers)
@@ -137,6 +168,10 @@ def get_url_info(url_list):
                 res = requests.get(news_url, headers=headers)
                 res.encoding = 'UTF-8'
                 raw_html = res.text
+                html = etree.HTML(raw_html)
+                news_author = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()')
+                news_time = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()')
+
                 html_filter = sensitive_word_filter(raw_html)
                 # print(html_filter)
                 # 记录爬取的html原码
@@ -156,12 +191,16 @@ def get_url_info(url_list):
                 print("该栏目下的新闻已全部爬取完！")
                 break
             finally:
+                html_file = new_dir + '\\' + tips[2:-6] + '.html'
                 # 合并pdf
                 pdf_file = new_dir + '\\' + tips[2:-6] + '.pdf'
-                # file_judge = os.path.exists(pdf_file)
-                # if file_judge:
-                merger.append(open(pdf_file, 'rb'))
-                sum_i += 1
+                file_judge = os.path.exists(pdf_file)
+                if file_judge:
+                    time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cur.execute(insert_result, (conf_id, 'detail', news_url, html_filter, html_file, pdf_file, time_now,
+                                                news_title, news_author, news_time))
+                    merger.append(open(pdf_file, 'rb'))
+                    sum_i += 1
 
     # 合并pdf
     merger.write(new_dir + '\\' + news_heading + '_合并.pdf')
@@ -208,6 +247,7 @@ def sensitive_word_filter(content):
 def main():
     # 郑大新闻网所有的栏目链接
     all_urls = all_urls_list()
+    
 
     for url in all_urls:
         url_list = get_url_list(url)
@@ -218,16 +258,6 @@ if __name__ == '__main__':
     cur = conn.cursor()
     time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # 插入spider任务表
-    insert_task = '''
-    INSERT INTO t_spider_task VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    '''
-
-    # 插入spider配置表
-    insert_conf = '''
-    INSERT INTO t_spider_conf VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-    '''
-
     # 任务id
     task_id = 1
     cur.execute(insert_task, (task_id, '郑大新闻网新闻爬取', '0 0 10 ? 7 * 2020', '', 0, 0, None, time_now))
@@ -236,6 +266,7 @@ if __name__ == '__main__':
                               '//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()',
                               '//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()',
                               '//*[@id="bok_0"]/div[@class="zzj_5"]//text()', time_now, time_now))
+    conn.commit()
     main()
     # 爬虫结束，更新爬虫状态为-1，停止
     cur.execute("UPDATE t_spider_task SET status = -1 WHERE id = %s", task_id)
