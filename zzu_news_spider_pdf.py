@@ -263,6 +263,8 @@ def get_url_info(url_list):
                         merger.append(open(pdf_file, 'rb'))
                         conn.commit()
                 sum_i += 1
+                # 清空之前的信息
+                html_filter, news_url, news_title, news_author, news_time = '', '', '', '', ''
 
     # 合并pdf
     merger.write(new_dir + '\\' + news_heading + '_合并.pdf')
@@ -298,7 +300,8 @@ def not_found_judge(html):
     # temp/temp_2 找到'404 not found'/'页面不存在'返回下标，找不到为-1
     temp = html.find('404 Not Found')
     temp_2 = html.find('页面不存在')
-    if temp != -1 or temp_2 != -1:
+    temp_3 = html.find('页面未找到')
+    if temp != -1 or temp_2 != -1 or temp_3 != -1:
         judge_identifier = 0
         print('该网页目前无法访问！')
     return judge_identifier
@@ -333,16 +336,16 @@ if __name__ == '__main__':
 
     # 任务id
     task_id = 1
-    # cur.execute(insert_task, (task_id, '郑大新闻网新闻爬取', '0 0 10 ? 7 * 2020', '', 0, 0, None, time_now))
-    # cur.execute(insert_conf, (task_id, spider_url, sleep_time, r'.*&tts=&tops=&pn=\d*', r'.*onemsg[?]msgid=\d*',
-    #                           '//*[@id="bok_0"]/div[@class="zzj_3"]/text()',
-    #                           '//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()',
-    #                           '//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()',
-    #                           '//*[@id="bok_0"]/div[@class="zzj_5"]//text()', time_now, time_now))
-    # conn.commit()
+    cur.execute(insert_task, (task_id, '郑大新闻网新闻爬取', '0 0 10 ? 7 * 2020', '', 0, 0, None, time_now))
+    cur.execute(insert_conf, (task_id, spider_url, sleep_time, r'.*&tts=&tops=&pn=\d*', r'.*onemsg[?]msgid=\d*',
+                              '//*[@id="bok_0"]/div[@class="zzj_3"]/text()',
+                              '//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()',
+                              '//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()',
+                              '//*[@id="bok_0"]/div[@class="zzj_5"]//text()', time_now, time_now))
+    conn.commit()
     main()
     # 爬虫结束，更新爬虫状态为-1，停止
     cur.execute("UPDATE t_spider_task SET status = -1 WHERE id = %s", task_id)
     cur.close()
     conn.commit()
-    # conn.close()
+    conn.close()
