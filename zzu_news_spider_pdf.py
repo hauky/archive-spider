@@ -149,6 +149,7 @@ def get_url_info(url_list):
 
     # 对每页的每个新闻做处理
     for i, url in enumerate(url_list):
+
         for j in range(0, 50):
             # 将新闻标题+内容整合，保存为字典
             # temp_info = {}
@@ -193,6 +194,7 @@ def get_url_info(url_list):
                     if judge_identifier:
                         # print(raw_html)
                         html_filter = sensitive_word_filter(raw_html)
+                        html_filter = img_update(html_filter)
                         with open(new_dir + '\\' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
                             f1.write(html_filter)
                         # html转pdf
@@ -216,6 +218,7 @@ def get_url_info(url_list):
                         news_time = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()')
 
                         html_filter = sensitive_word_filter(raw_html)
+                        html_filter = img_update(html_filter)
                         # print(html_filter)
                         # 记录爬取的html原码
                         with open(new_dir + '\\' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
@@ -319,6 +322,22 @@ def sensitive_word_filter(content):
     # print(text2)
 
     return content
+
+
+# 图片新闻板块图片替换
+def img_update(content):
+    new_html = content
+
+    pattern = "(img src=\")(.*?)(.s)(.jpg\")"
+
+    def func(m):
+        rtn = m.group(1) + m.group(2) + m.group(4)
+        return rtn
+
+    temp = re.compile(pattern)
+    new_html = temp.sub(func, new_html)
+
+    return new_html
 
 
 def main():
