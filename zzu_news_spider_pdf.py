@@ -151,6 +151,10 @@ def get_url_info(url_list):
     news_heading = html.xpath('//*[@id="bok_0"]/div[@class="zzj_3"]/text()')
     news_heading = ''.join(news_heading)
 
+    # 栏目下已存在新闻数统计器
+    sql_heading = '%' + news_heading + '%'
+    news_count = cur.execute("SELECT * FROM t_spider_result WHERE htmlPath LIKE %s", sql_heading)
+
     # 创建文件夹
     # 先判断文件夹是否存在，不存在则创建文件夹
     # now_dir = os.getcwd()
@@ -176,6 +180,7 @@ def get_url_info(url_list):
             html = etree.HTML(r.text)
             tips = '正在获取{}栏目下第{}页第{}条新闻，总第{}条新闻......'.format(news_heading, i + 1, j + 1, sum_i + 1)
             print(tips)
+            update_tips = '正在获取{}栏目下第{}页第{}条新闻，总第{}条新闻......'.format(news_heading, i + 1, j + 1, news_count + 1)
             try:
                 xpath_temp = '//*[@id="bok_0"]/div[@class="zzj_5"]/div[' + str(1 + j * 2) + ']/a/'
                 # temp_info['title'] = html.xpath(xpath_temp + 'span/text()')[0]
@@ -221,17 +226,17 @@ def get_url_info(url_list):
                             html_filter = sensitive_word_filter(raw_html)
                             html_filter = img_update(html_filter)
                             # 增加文件是否存在的判断，避免覆盖写入，若有更新，重新起名
-                            file_path = new_dir + '\\' + tips[2:-6] + '.html'
+                            file_path = new_dir + '\\' + tips[4:-6] + '.html'
                             if os.path.exists(file_path):
-                                with open(new_dir + '\\(更新)' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
+                                with open(new_dir + '\\(更新)' + update_tips[4:-6] + '.html', 'w+', encoding='UTF-8') as f1:
                                     f1.write(html_filter)
                                 # html转pdf
-                                pdfkit.from_url(refresh_url, new_dir + '\\(更新)' + tips[2:-6] + '.pdf', configuration=confg)
+                                pdfkit.from_url(refresh_url, new_dir + '\\(更新)' + update_tips[4:-6] + '.pdf', configuration=confg)
                             else:
                                 with open(file_path, 'w+', encoding='UTF-8') as f1:
                                     f1.write(html_filter)
                                 # html转pdf
-                                pdfkit.from_url(refresh_url, new_dir + '\\' + tips[2:-6] + '.pdf', configuration=confg)
+                                pdfkit.from_url(refresh_url, new_dir + '\\' + tips[4:-6] + '.pdf', configuration=confg)
                                 # 因跳转到不同网站的xpath不同，获取不到统一的xpath，故news_author, news_time都为空
                         else:
                             # 将404 not found 记录进数据库
@@ -252,14 +257,14 @@ def get_url_info(url_list):
                             news_time = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()')
 
                             html_filter = sensitive_word_filter(raw_html)
-                            html_filter = img_update(html_filter)
+                            # html_filter = img_update(html_filter)
                             # print(html_filter)
 
                             # 增加文件是否存在的判断，避免覆盖写入，若有更新，重新起名
-                            file_path = new_dir + '\\' + tips[2:-6] + '.html'
+                            file_path = new_dir + '\\' + tips[4:-6] + '.html'
                             if os.path.exists(file_path):
                                 # 记录爬取的html原码
-                                with open(new_dir + '\\(更新)' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
+                                with open(new_dir + '\\(更新)' + update_tips[4:-6] + '.html', 'w+', encoding='UTF-8') as f1:
                                     f1.write(html_filter)
 
                                 # 对html原码中不能正确解析的黑体做调整
@@ -268,7 +273,7 @@ def get_url_info(url_list):
                                     html_filter = html_filter[:err_index] + '宋体' + html_filter[err_index + len('黑体'):]
 
                                 # html转pdf
-                                pdfkit.from_string(html_filter, new_dir + '\\(更新)' + tips[2:-6] + '.pdf',
+                                pdfkit.from_string(html_filter, new_dir + '\\(更新)' + update_tips[4:-6] + '.pdf',
                                                    configuration=confg)
                             else:
                                 # 记录爬取的html原码
@@ -281,7 +286,7 @@ def get_url_info(url_list):
                                     html_filter = html_filter[:err_index] + '宋体' + html_filter[err_index + len('黑体'):]
 
                                 # html转pdf
-                                pdfkit.from_string(html_filter, new_dir + '\\' + tips[2:-6] + '.pdf', configuration=confg)
+                                pdfkit.from_string(html_filter, new_dir + '\\' + tips[4:-6] + '.pdf', configuration=confg)
                         else:
                             # 将404 not found 记录进数据库
                             html_filter = '404 not found'
@@ -300,8 +305,8 @@ def get_url_info(url_list):
                 print("该栏目《{}》下的新闻已全部爬取完！".format(news_heading))
                 break
             finally:
-                update_html_file = new_dir + '\\(更新)' + tips[2:-6] + '.html'
-                update_pdf_file = new_dir + '\\(更新)' + tips[2:-6] + '.pdf'
+                update_html_file = new_dir + '\\(更新)' + update_tips[4:-6] + '.html'
+                update_pdf_file = new_dir + '\\(更新)' + update_tips[4:-6] + '.pdf'
                 # 判断是不是栏目下新闻的更新产生了新的文件
                 update_judge = os.path.exists(update_pdf_file)
 
@@ -313,9 +318,9 @@ def get_url_info(url_list):
 
                 if not judge:
                     if not update_judge:
-                        html_file = new_dir + '\\' + tips[2:-6] + '.html'
+                        html_file = new_dir + '\\' + tips[4:-6] + '.html'
                         # 合并pdf
-                        pdf_file = new_dir + '\\' + tips[2:-6] + '.pdf'
+                        pdf_file = new_dir + '\\' + tips[4:-6] + '.pdf'
                         file_judge = os.path.exists(pdf_file)
                         if file_judge:
                             try:
@@ -354,6 +359,7 @@ def get_url_info(url_list):
                 else:
                     print('该新闻《{}》已保存在数据库中！'.format(news_title))
                 sum_i += 1
+                news_count += 1
                 # 清空之前的信息
                 html_filter, news_url, news_title, news_author, news_time = '', '', '', '', ''
 
@@ -369,7 +375,7 @@ def get_url_info(url_list):
     merge_pdf_path = new_dir + '\\' + news_heading + '_合并.pdf'
     if len(merger.pages):
         if os.path.exists(merge_pdf_path):
-            merger.write(new_dir + '\\' + news_heading + '_更新合并.pdf')
+            merger.write(new_dir + '\\' + news_heading + '_' + str(news_count-1) + '条新闻后的更新合并.pdf')
             print('{}栏目pdf更新合并完成\n'.format(news_heading))
         else:
             merger.write(merge_pdf_path)
@@ -454,8 +460,6 @@ def main():
 
     time.sleep(sleep_time)
     print('{}的爬虫任务已完成！'.format(spider_url))
-
-
 
 
 if __name__ == '__main__':
