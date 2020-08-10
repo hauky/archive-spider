@@ -34,6 +34,7 @@ class TSpiderResult(models.Model):
     htmlPath = models.CharField(db_column='htmlPath', max_length=128, blank=True, null=True)  # Field name made lowercase.
     pdfPath = models.CharField(db_column='pdfPath', max_length=128, blank=True, null=True)  # Field name made lowercase.
     createTime = models.DateTimeField(db_column='createTime', auto_now_add=True, max_length=0)  # Field name made lowercase.
+    module = models.CharField(max_length=100, blank=True, null=True)
     title = models.CharField(max_length=255, blank=True, null=True)
     author = models.CharField(max_length=32, blank=True, null=True)
     time = models.CharField(max_length=32, blank=True, null=True)

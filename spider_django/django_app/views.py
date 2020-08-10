@@ -71,12 +71,13 @@ def add_results(request):
         htmlContent = request.POST.get('htmlContent')
         htmlPath = request.POST.get('htmlPath')
         pdfPath = request.POST.get('pdfPath')
+        module = request.POST.get('module')
         title = request.POST.get('title')
         author =request.POST.get('author')
         time = request.POST.get('time')
 
         TSpiderResult.objects.create(confId=confId, type=type, url=url, htmlContent=htmlContent, htmlPath=htmlPath,
-                                     pdfPath=pdfPath, title=title, author=author, time=time)
+                                     pdfPath=pdfPath, module=module, title=title, author=author, time=time)
 
     except Exception as e:
         response['status'] = -1
@@ -209,12 +210,14 @@ def modify_results(request):
         htmlContent = request.POST.get('htmlContent')
         htmlPath = request.POST.get('htmlPath')
         pdfPath = request.POST.get('pdfPath')
+        module = request.POST.get('module')
         title = request.POST.get('title')
         author = request.POST.get('author')
         time = request.POST.get('time')
 
-        TSpiderResult.objects.filter(id=id).update(confId=confId, type=type, url=url, htmlContent=htmlContent, htmlPath=htmlPath,
-                                     pdfPath=pdfPath, title=title, author=author, time=time)
+        TSpiderResult.objects.filter(id=id).update(confId=confId, type=type, url=url, htmlContent=htmlContent,
+                                                   htmlPath=htmlPath, pdfPath=pdfPath, module=module,
+                                                   title=title, author=author, time=time)
 
     except Exception as e:
         response['status'] = -1
@@ -223,17 +226,62 @@ def modify_results(request):
 
 @require_http_methods(["POST"])
 def show_tasks(request):
-    pass
+    # 根据id来查找并展示记录
+    response = dict()
+    try:
+        id = request.POST.get('id')
+        tasks = TSpiderTask.objects.filter(id=id).all()
+        response['message'] = 'success'
+        response['status'] = 0
+
+        response['data'] = []
+        temp_list = json.loads(serializers.serialize("json", tasks))
+        for each_dict in temp_list:
+            response['data'].append(each_dict['fields'])
+    except Exception as e:
+        response['status'] = -1
+        response['message'] = str(e)
+    return JsonResponse(response)
 
 
 @require_http_methods(["POST"])
 def show_confs(request):
-    pass
+    # 根据id来查找并展示记录
+    response = dict()
+    try:
+        id = request.POST.get('id')
+        confs = TSpiderConf.objects.filter(id=id).all()
+        response['message'] = 'success'
+        response['status'] = 0
+
+        response['data'] = []
+        temp_list = json.loads(serializers.serialize("json", confs))
+        for each_dict in temp_list:
+            response['data'].append(each_dict['fields'])
+    except Exception as e:
+        response['status'] = -1
+        response['message'] = str(e)
+    return JsonResponse(response)
 
 
 @require_http_methods(["POST"])
 def show_results(request):
-    pass
+    # 根据id来查找并展示记录
+    response = dict()
+    try:
+        id = request.POST.get('id')
+        results = TSpiderResult.objects.filter(id=id).all()
+        response['message'] = 'success'
+        response['status'] = 0
+
+        response['data'] = []
+        temp_list = json.loads(serializers.serialize("json", results))
+        for each_dict in temp_list:
+            response['data'].append(each_dict['fields'])
+    except Exception as e:
+        response['status'] = -1
+        response['message'] = str(e)
+    return JsonResponse(response)
 
 
 @require_http_methods(["GET"])
