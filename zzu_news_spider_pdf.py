@@ -41,7 +41,7 @@ INSERT INTO t_spider_conf VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
 '''
 # 插入spider结果表
 insert_result = '''
-INSERT INTO t_spider_result VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+INSERT INTO t_spider_result VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 '''
 
 # pdfkit配置
@@ -67,7 +67,7 @@ def all_urls_list():
         conf_id = conf_id[0]
 
         time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute(insert_result, (conf_id, 'index', spider_url, '', '', '', time_now, '', '', ''))
+        cur.execute(insert_result, (conf_id, 'index', spider_url, '', '', '', time_now, '', '', '', ''))
         conn.commit()
     else:
         print('该主页记录已爬取过且保存在数据库中！')
@@ -99,13 +99,15 @@ def get_url_list(url):
     r = requests.get(url, headers=headers)
     r.encoding = 'UTF-8'
     html = etree.HTML(r.text)
+    news_heading = html.xpath('//*[@id="bok_0"]/div[@class="zzj_3"]/text()')
+    news_heading = ''.join(news_heading)
 
     # 查找最大页数
     page = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/text()[1]')
     page = ''.join(page)
     # print(page)
     search_obj = re.search(r'分\d+页', page)
-    #print(search_obj.group())
+    # print(search_obj.group())
     page = re.search(r'\d+', search_obj.group())
     # print(page.group())
     max_page = int(page.group())
@@ -122,10 +124,10 @@ def get_url_list(url):
         conf_id = conf_id[0]
 
         time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute(insert_result, (conf_id, 'list', temp_url, '', '', '', time_now, '', '', ''))
+        cur.execute(insert_result, (conf_id, 'list', temp_url, '', '', '', time_now, news_heading, '', '', ''))
         conn.commit()
     else:
-        print('该栏目首页记录已爬取过且保存在数据库中！')
+        print('该栏目{}首页记录已爬取过且保存在数据库中！'.format(news_heading))
 
     for i in range(1, max_page + 1):
         # print('爬取网上新闻的第{}页......'.format(i))
@@ -171,7 +173,7 @@ def get_url_info(url_list):
     # 对每页的每个新闻做处理
     for i, url in enumerate(url_list):
 
-        for j in range(0, 50):
+        for j in range(0, 1):
             # 将新闻标题+内容整合，保存为字典
             # temp_info = {}
 
@@ -224,7 +226,9 @@ def get_url_info(url_list):
                         if judge_identifier:
                             # print(raw_html)
                             html_filter = sensitive_word_filter(raw_html)
-                            html_filter = img_update(html_filter)
+                            # 对图片新闻栏目下新闻中的图片做高清处理
+                            if news_heading == '郑州大学网上新闻（图片新闻）':
+                                html_filter = img_update(html_filter)
                             # 增加文件是否存在的判断，避免覆盖写入，若有更新，重新起名
                             file_path = new_dir + '\\' + tips[4:-6] + '.html'
                             if os.path.exists(file_path):
@@ -243,7 +247,7 @@ def get_url_info(url_list):
                             html_filter = '404 not found'
                             time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                             cur.execute(insert_result,
-                                        (conf_id, 'detail', news_url, html_filter, '', '', time_now,
+                                        (conf_id, 'detail', news_url, html_filter, '', '', time_now, news_heading,
                                          news_title, news_author, news_time))
                             conn.commit()
 
@@ -257,7 +261,9 @@ def get_url_info(url_list):
                             news_time = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()')
 
                             html_filter = sensitive_word_filter(raw_html)
-                            # html_filter = img_update(html_filter)
+                            # 对图片新闻栏目下新闻中的图片做高清处理
+                            if news_heading == '郑州大学网上新闻（图片新闻）':
+                                html_filter = img_update(html_filter)
                             # print(html_filter)
 
                             # 增加文件是否存在的判断，避免覆盖写入，若有更新，重新起名
@@ -292,7 +298,7 @@ def get_url_info(url_list):
                             html_filter = '404 not found'
                             time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                             cur.execute(insert_result,
-                                        (conf_id, 'detail', news_url, html_filter, '', '', time_now,
+                                        (conf_id, 'detail', news_url, html_filter, '', '', time_now, news_heading,
                                          news_title, news_author, news_time))
                             conn.commit()
                 else:
@@ -325,7 +331,8 @@ def get_url_info(url_list):
                         if file_judge:
                             try:
                                 time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                                cur.execute(insert_result, (conf_id, 'detail', news_url, html_filter, html_file, pdf_file, time_now,
+                                cur.execute(insert_result, (conf_id, 'detail', news_url, html_filter, html_file,
+                                                            pdf_file, time_now, news_heading,
                                                             news_title, news_author, news_time))
                                 merger.append(open(pdf_file, 'rb'))
                                 conn.commit()
@@ -334,7 +341,8 @@ def get_url_info(url_list):
                                 html_filter = html_filter.encode(encoding='UTF-8', errors='ignore')
                                 time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                                 cur.execute(insert_result,
-                                            (conf_id, 'detail', news_url, html_filter, html_file, pdf_file, time_now,
+                                            (conf_id, 'detail', news_url, html_filter, html_file,
+                                             pdf_file, time_now, news_heading,
                                              news_title, news_author, news_time))
                                 merger.append(open(pdf_file, 'rb'))
                                 conn.commit()
@@ -343,7 +351,8 @@ def get_url_info(url_list):
                         try:
                             time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                             cur.execute(insert_result,
-                                        (conf_id, 'detail', news_url, html_filter, update_html_file, update_pdf_file, time_now,
+                                        (conf_id, 'detail', news_url, html_filter, update_html_file, update_pdf_file,
+                                         time_now, news_heading,
                                          news_title, news_author, news_time))
                             merger.append(open(update_pdf_file, 'rb'))
                             conn.commit()
@@ -352,7 +361,8 @@ def get_url_info(url_list):
                             html_filter = html_filter.encode(encoding='UTF-8', errors='ignore')
                             time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                             cur.execute(insert_result,
-                                        (conf_id, 'detail', news_url, html_filter, update_html_file, update_pdf_file, time_now,
+                                        (conf_id, 'detail', news_url, html_filter, update_html_file, update_pdf_file,
+                                         time_now, news_heading,
                                          news_title, news_author, news_time))
                             merger.append(open(update_pdf_file, 'rb'))
                             conn.commit()
