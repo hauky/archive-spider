@@ -11,13 +11,14 @@ import re
 import pdfkit
 from PyPDF2 import PdfFileMerger
 import os
+import time
 # 敏感词过滤类，AC自动机
 import Ac_auto
 
 # 爬取的地址
 spider_url = 'http://news.zzu.edu.cn/'
 # 睡眠时间
-sleep_time = 10
+sleep_time = 5
 # mysql登录信息
 conn = pymysql.connect(
     host='192.168.1.132',
@@ -55,18 +56,25 @@ headers = {
 
 # 查找所有栏目的url（栏目url），并保存
 def all_urls_list():
-    # 获取配置表的id，赋值给结果表
-    cur.execute("SELECT id FROM t_spider_conf WHERE domain = %s", spider_url)
-    conf_id = cur.fetchone()
-    conf_id = conf_id[0]
+    # 存储index的记录，放进数据库，如果已经存在，则不存储
+    cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where url = %s limit 1), 0)", spider_url)
+    judge = cur.fetchone()
+    judge = judge[0]
+    if not judge:
+        # 获取配置表的id，赋值给结果表
+        cur.execute("SELECT id FROM t_spider_conf WHERE domain = %s", spider_url)
+        conf_id = cur.fetchone()
+        conf_id = conf_id[0]
 
-    time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    cur.execute(insert_result, (conf_id, 'index', spider_url, '', '', '', time_now, '', '', ''))
-    conn.commit()
+        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cur.execute(insert_result, (conf_id, 'index', spider_url, '', '', '', time_now, '', '', ''))
+        conn.commit()
+    else:
+        print('该主页记录已爬取过且保存在数据库中！')
 
     urls_list = []
-    url = spider_url
-    r = requests.get(url, headers=headers)
+
+    r = requests.get(spider_url, headers=headers)
     r.encoding = 'UTF-8'
     html = etree.HTML(r.text)
 
@@ -87,11 +95,6 @@ def all_urls_list():
 
 # 查找每个栏目下的每一页的url（列表url），并保存
 def get_url_list(url):
-    # 获取配置表的id，赋值给结果表
-    cur.execute("SELECT id FROM t_spider_conf WHERE domain = %s", spider_url)
-    conf_id = cur.fetchone()
-    conf_id = conf_id[0]
-
     url_list = []
     r = requests.get(url, headers=headers)
     r.encoding = 'UTF-8'
@@ -107,13 +110,27 @@ def get_url_list(url):
     # print(page.group())
     max_page = int(page.group())
 
+    # 存储list第一页的记录，放进数据库，如果已经存在，则不存储
+    temp_url = url + '&tts=&tops=&pn=1'
+    cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where url = %s limit 1), 0)", temp_url)
+    judge = cur.fetchone()
+    judge = judge[0]
+    if not judge:
+        # 获取配置表的id，赋值给结果表
+        cur.execute("SELECT id FROM t_spider_conf WHERE domain = %s", spider_url)
+        conf_id = cur.fetchone()
+        conf_id = conf_id[0]
+
+        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        cur.execute(insert_result, (conf_id, 'list', temp_url, '', '', '', time_now, '', '', ''))
+        conn.commit()
+    else:
+        print('该栏目首页记录已爬取过且保存在数据库中！')
+
     for i in range(1, max_page + 1):
         # print('爬取网上新闻的第{}页......'.format(i))
         temp_url = url + '&tts=&tops=&pn=' + str(i)
-        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cur.execute(insert_result, (conf_id, 'list', temp_url, '', '', '', time_now, '', '', ''))
         url_list.append(temp_url)
-        conn.commit()
     return url_list
 
 
@@ -172,106 +189,191 @@ def get_url_info(url_list):
                 # print(temp_info)
                 print('新闻标题：{}'.format(news_title))
 
-                res = requests.get(news_url, headers=headers)
-                res.encoding = 'UTF-8'
-                raw_html = res.text
+                # 存储栏目第一页第一条新闻的记录，如果已经存在，则直接跳出循环，不再进行爬取
+                # 如果不存在，则说明有更新，爬取新的并向下查找
+                cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where title = %s limit 1), 0)", news_title)
+                judge = cur.fetchone()
+                judge = judge[0]
 
-                # 对直接跳转的网页做处理
-                search_refresh = re.search(r'http-equiv="refresh".*\'', raw_html)
-                if search_refresh:
-                    # print(search_refresh.group())
-                    refresh_url = re.search(r'[a-zA-z]+://[^\s]*\w', search_refresh.group())
-                    refresh_url = refresh_url.group()
+                if not judge:
 
-                    # 使requests忽略对SSL的验证和报错, 否则会过度连接
-                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-                    refresh_res = requests.get(refresh_url, headers=headers, verify=False)
-                    refresh_res.encoding = 'UTF-8'
-                    # print(refresh_res)
-                    raw_html = refresh_res.text
-                    judge_identifier = not_found_judge(raw_html)
-                    # 对非404 not found的网页做进一步处理
-                    if judge_identifier:
-                        # print(raw_html)
-                        html_filter = sensitive_word_filter(raw_html)
-                        html_filter = img_update(html_filter)
-                        with open(new_dir + '\\' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
-                            f1.write(html_filter)
-                        # html转pdf
-                        pdfkit.from_url(refresh_url, new_dir + '\\' + tips[2:-6] + '.pdf', configuration=confg)
-                        # 因跳转到不同网站的xpath不同，获取不到统一的xpath，故news_title, news_author, news_time都为空
+                    res = requests.get(news_url, headers=headers)
+                    res.encoding = 'UTF-8'
+                    raw_html = res.text
+
+                    # 对直接跳转的网页做处理
+                    search_refresh = re.search(r'http-equiv="refresh".*\'', raw_html)
+                    if search_refresh:
+                        # print(search_refresh.group())
+                        refresh_url = re.search(r'[a-zA-z]+://[^\s]*\w', search_refresh.group())
+                        refresh_url = refresh_url.group()
+
+                        # 使requests忽略对SSL的验证和报错, 否则会过度连接
+                        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                        refresh_res = requests.get(refresh_url, headers=headers, verify=False)
+                        refresh_res.encoding = 'UTF-8'
+                        # print(refresh_res)
+                        raw_html = refresh_res.text
+                        judge_identifier = not_found_judge(raw_html)
+                        # 对非404 not found的网页做进一步处理
+                        if judge_identifier:
+                            # print(raw_html)
+                            html_filter = sensitive_word_filter(raw_html)
+                            html_filter = img_update(html_filter)
+                            # 增加文件是否存在的判断，避免覆盖写入，若有更新，重新起名
+                            file_path = new_dir + '\\' + tips[2:-6] + '.html'
+                            if os.path.exists(file_path):
+                                with open(new_dir + '\\(更新)' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
+                                    f1.write(html_filter)
+                                # html转pdf
+                                pdfkit.from_url(refresh_url, new_dir + '\\(更新)' + tips[2:-6] + '.pdf', configuration=confg)
+                            else:
+                                with open(file_path, 'w+', encoding='UTF-8') as f1:
+                                    f1.write(html_filter)
+                                # html转pdf
+                                pdfkit.from_url(refresh_url, new_dir + '\\' + tips[2:-6] + '.pdf', configuration=confg)
+                                # 因跳转到不同网站的xpath不同，获取不到统一的xpath，故news_author, news_time都为空
+                        else:
+                            # 将404 not found 记录进数据库
+                            html_filter = '404 not found'
+                            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            cur.execute(insert_result,
+                                        (conf_id, 'detail', news_url, html_filter, '', '', time_now,
+                                         news_title, news_author, news_time))
+                            conn.commit()
+
+                    # 对非跳转网页做处理
                     else:
-                        # 将404 not found 记录进数据库
-                        html_filter = '404 not found'
-                        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        cur.execute(insert_result,
-                                    (conf_id, 'detail', news_url, html_filter, '', '', time_now,
-                                     news_title, news_author, news_time))
-                        conn.commit()
+                        judge_identifier = not_found_judge(raw_html)
+                        # 对非404 not found的网页做进一步处理
+                        if judge_identifier:
+                            html = etree.HTML(raw_html)
+                            news_author = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()')
+                            news_time = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()')
 
+                            html_filter = sensitive_word_filter(raw_html)
+                            html_filter = img_update(html_filter)
+                            # print(html_filter)
+
+                            # 增加文件是否存在的判断，避免覆盖写入，若有更新，重新起名
+                            file_path = new_dir + '\\' + tips[2:-6] + '.html'
+                            if os.path.exists(file_path):
+                                # 记录爬取的html原码
+                                with open(new_dir + '\\(更新)' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
+                                    f1.write(html_filter)
+
+                                # 对html原码中不能正确解析的黑体做调整
+                                err_index = html_filter.find('黑体')
+                                if err_index != -1:
+                                    html_filter = html_filter[:err_index] + '宋体' + html_filter[err_index + len('黑体'):]
+
+                                # html转pdf
+                                pdfkit.from_string(html_filter, new_dir + '\\(更新)' + tips[2:-6] + '.pdf',
+                                                   configuration=confg)
+                            else:
+                                # 记录爬取的html原码
+                                with open(file_path, 'w+', encoding='UTF-8') as f1:
+                                    f1.write(html_filter)
+
+                                # 对html原码中不能正确解析的黑体做调整
+                                err_index = html_filter.find('黑体')
+                                if err_index != -1:
+                                    html_filter = html_filter[:err_index] + '宋体' + html_filter[err_index + len('黑体'):]
+
+                                # html转pdf
+                                pdfkit.from_string(html_filter, new_dir + '\\' + tips[2:-6] + '.pdf', configuration=confg)
+                        else:
+                            # 将404 not found 记录进数据库
+                            html_filter = '404 not found'
+                            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            cur.execute(insert_result,
+                                        (conf_id, 'detail', news_url, html_filter, '', '', time_now,
+                                         news_title, news_author, news_time))
+                            conn.commit()
                 else:
-                    judge_identifier = not_found_judge(raw_html)
-                    # 对非404 not found的网页做进一步处理
-                    if judge_identifier:
-                        html = etree.HTML(raw_html)
-                        news_author = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()')
-                        news_time = html.xpath('//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()')
+                    print('该新闻《{}》已爬取过且保存在数据库中！'.format(news_title))
+                    break
 
-                        html_filter = sensitive_word_filter(raw_html)
-                        html_filter = img_update(html_filter)
-                        # print(html_filter)
-                        # 记录爬取的html原码
-                        with open(new_dir + '\\' + tips[2:-6] + '.html', 'w+', encoding='UTF-8') as f1:
-                            f1.write(html_filter)
-
-                        # 对html原码中不能正确解析的黑体做调整
-                        err_index = html_filter.find('黑体')
-                        if err_index != -1:
-                            html_filter = html_filter[:err_index] + '宋体' + html_filter[err_index + len('黑体'):]
-
-                        # html转pdf
-                        pdfkit.from_string(html_filter, new_dir + '\\' + tips[2:-6] + '.pdf', configuration=confg)
-                    else:
-                        # 将404 not found 记录进数据库
-                        html_filter = '404 not found'
-                        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        cur.execute(insert_result,
-                                    (conf_id, 'detail', news_url, html_filter, '', '', time_now,
-                                     news_title, news_author, news_time))
-                        conn.commit()
             except IOError:
                 print("Warning: wkhtmltopdf读取文件失败, 可能是网页无法打开或者图片/css样式丢失。")
             except IndexError:
-                print("该栏目下的新闻已全部爬取完！")
+                print("该栏目《{}》下的新闻已全部爬取完！".format(news_heading))
                 break
             finally:
-                html_file = new_dir + '\\' + tips[2:-6] + '.html'
-                # 合并pdf
-                pdf_file = new_dir + '\\' + tips[2:-6] + '.pdf'
-                file_judge = os.path.exists(pdf_file)
-                if file_judge:
-                    try:
-                        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        cur.execute(insert_result, (conf_id, 'detail', news_url, html_filter, html_file, pdf_file, time_now,
-                                                    news_title, news_author, news_time))
-                        merger.append(open(pdf_file, 'rb'))
-                        conn.commit()
-                    except pymysql.err.DataError:
-                        print("html编码错误或值错误！")
-                        html_filter = html_filter.encode(encoding='UTF-8', errors='ignore')
-                        time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        cur.execute(insert_result,
-                                    (conf_id, 'detail', news_url, html_filter, html_file, pdf_file, time_now,
-                                     news_title, news_author, news_time))
-                        merger.append(open(pdf_file, 'rb'))
-                        conn.commit()
+                update_html_file = new_dir + '\\(更新)' + tips[2:-6] + '.html'
+                update_pdf_file = new_dir + '\\(更新)' + tips[2:-6] + '.pdf'
+                # 判断是不是栏目下新闻的更新产生了新的文件
+                update_judge = os.path.exists(update_pdf_file)
+
+                # 确保不会有重复记录存入数据库
+                cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where title = %s limit 1), 0)",
+                            news_title)
+                judge = cur.fetchone()
+                judge = judge[0]
+
+                if not judge:
+                    if not update_judge:
+                        html_file = new_dir + '\\' + tips[2:-6] + '.html'
+                        # 合并pdf
+                        pdf_file = new_dir + '\\' + tips[2:-6] + '.pdf'
+                        file_judge = os.path.exists(pdf_file)
+                        if file_judge:
+                            try:
+                                time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                cur.execute(insert_result, (conf_id, 'detail', news_url, html_filter, html_file, pdf_file, time_now,
+                                                            news_title, news_author, news_time))
+                                merger.append(open(pdf_file, 'rb'))
+                                conn.commit()
+                            except pymysql.err.DataError:
+                                print("html编码错误或值错误！")
+                                html_filter = html_filter.encode(encoding='UTF-8', errors='ignore')
+                                time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                                cur.execute(insert_result,
+                                            (conf_id, 'detail', news_url, html_filter, html_file, pdf_file, time_now,
+                                             news_title, news_author, news_time))
+                                merger.append(open(pdf_file, 'rb'))
+                                conn.commit()
+
+                    else:
+                        try:
+                            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            cur.execute(insert_result,
+                                        (conf_id, 'detail', news_url, html_filter, update_html_file, update_pdf_file, time_now,
+                                         news_title, news_author, news_time))
+                            merger.append(open(update_pdf_file, 'rb'))
+                            conn.commit()
+                        except pymysql.err.DataError:
+                            print("html编码错误或值错误！")
+                            html_filter = html_filter.encode(encoding='UTF-8', errors='ignore')
+                            time_now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                            cur.execute(insert_result,
+                                        (conf_id, 'detail', news_url, html_filter, update_html_file, update_pdf_file, time_now,
+                                         news_title, news_author, news_time))
+                            merger.append(open(update_pdf_file, 'rb'))
+                            conn.commit()
+                else:
+                    print('该新闻《{}》已保存在数据库中！'.format(news_title))
                 sum_i += 1
                 # 清空之前的信息
                 html_filter, news_url, news_title, news_author, news_time = '', '', '', '', ''
 
+        else:
+            continue
+        # 内循环break（更新已完成/无更新导致的break），则跳出双重循环
+        print('该栏目《{}》下的新闻无更新或更新已完成！\n'.format(news_heading))
+        time.sleep(sleep_time)
+        break
+
     # 合并pdf
-    merger.write(new_dir + '\\' + news_heading + '_合并.pdf')
-    print('{}栏目pdf合并完成'.format(news_heading))
+    # 如果存在更新的新闻，则合并更新的新闻
+    merge_pdf_path = new_dir + '\\' + news_heading + '_合并.pdf'
+    if len(merger.pages):
+        if os.path.exists(merge_pdf_path):
+            merger.write(new_dir + '\\' + news_heading + '_更新合并.pdf')
+            print('{}栏目pdf更新合并完成\n'.format(news_heading))
+        else:
+            merger.write(merge_pdf_path)
+            print('{}栏目pdf合并完成\n'.format(news_heading))
 
 
 # 获取具体一条新闻的内容
@@ -343,10 +445,17 @@ def img_update(content):
 def main():
     # 郑大新闻网所有的栏目链接
     all_urls = all_urls_list()
+    # all_urls.remove('http://www16.zzu.edu.cn/msgs/vmsgisapi.dll/vmsglist?mtype=x&lan=202')
+    # all_urls = ['http://www16.zzu.edu.cn/msgs/vmsgisapi.dll/vmsglist?mtype=x&lan=201']
 
     for url in all_urls:
         url_list = get_url_list(url)
         get_url_info(url_list)
+
+    time.sleep(sleep_time)
+    print('{}的爬虫任务已完成！'.format(spider_url))
+
+
 
 
 if __name__ == '__main__':
@@ -355,13 +464,13 @@ if __name__ == '__main__':
 
     # 任务id
     task_id = 1
-    cur.execute(insert_task, (task_id, '郑大新闻网新闻爬取', '0 0 10 ? 7 * 2020', '', 0, 0, None, time_now))
-    cur.execute(insert_conf, (task_id, spider_url, sleep_time, r'.*&tts=&tops=&pn=\d*', r'.*onemsg[?]msgid=\d*',
-                              '//*[@id="bok_0"]/div[@class="zzj_3"]/text()',
-                              '//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()',
-                              '//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()',
-                              '//*[@id="bok_0"]/div[@class="zzj_5"]//text()', time_now, time_now))
-    conn.commit()
+    # cur.execute(insert_task, (task_id, '郑大新闻网新闻爬取', '0 0 10 ? 7 * 2020', '', 0, 0, None, time_now))
+    # cur.execute(insert_conf, (task_id, spider_url, sleep_time, r'.*&tts=&tops=&pn=\d*', r'.*onemsg[?]msgid=\d*',
+    #                           '//*[@id="bok_0"]/div[@class="zzj_3"]/text()',
+    #                           '//*[@id="bok_0"]/div[@class="zzj_4"]/span[3]/text()',
+    #                           '//*[@id="bok_0"]/div[@class="zzj_4"]/span[1]/text()',
+    #                           '//*[@id="bok_0"]/div[@class="zzj_5"]//text()', time_now, time_now))
+    # conn.commit()
     main()
     # 爬虫结束，更新爬虫状态为-1，停止
     cur.execute("UPDATE t_spider_task SET status = -1 WHERE id = %s", task_id)
