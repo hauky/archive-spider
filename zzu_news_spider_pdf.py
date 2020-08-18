@@ -44,6 +44,9 @@ insert_result = '''
 INSERT INTO t_spider_result VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 '''
 
+# 每页最大爬取新闻数 (1<=i<=50)
+i_news = 1
+
 # pdfkit配置
 confg = pdfkit.configuration(wkhtmltopdf=r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe')
 
@@ -173,7 +176,7 @@ def get_url_info(url_list):
     # 对每页的每个新闻做处理
     for i, url in enumerate(url_list):
 
-        for j in range(0, 1):
+        for j in range(0, i_news):
             # 将新闻标题+内容整合，保存为字典
             # temp_info = {}
 
@@ -198,7 +201,7 @@ def get_url_info(url_list):
 
                 # 存储栏目第一页第一条新闻的记录，如果已经存在，则直接跳出循环，不再进行爬取
                 # 如果不存在，则说明有更新，爬取新的并向下查找
-                cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where title = %s limit 1), 0)", news_title)
+                cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where url = %s limit 1), 0)", news_url)
                 judge = cur.fetchone()
                 judge = judge[0]
 
@@ -317,8 +320,7 @@ def get_url_info(url_list):
                 update_judge = os.path.exists(update_pdf_file)
 
                 # 确保不会有重复记录存入数据库
-                cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where title = %s limit 1), 0)",
-                            news_title)
+                cur.execute("SELECT IFNULL((SELECT 1 from t_spider_result where url = %s limit 1), 0)", news_url)
                 judge = cur.fetchone()
                 judge = judge[0]
 
@@ -336,6 +338,7 @@ def get_url_info(url_list):
                                                             news_title, news_author, news_time))
                                 merger.append(open(pdf_file, 'rb'))
                                 conn.commit()
+                                print('该新闻《{}》已爬取。'.format(news_title))
                             except pymysql.err.DataError:
                                 print("html编码错误或值错误！")
                                 html_filter = html_filter.encode(encoding='UTF-8', errors='ignore')
@@ -346,6 +349,7 @@ def get_url_info(url_list):
                                              news_title, news_author, news_time))
                                 merger.append(open(pdf_file, 'rb'))
                                 conn.commit()
+                                print('该新闻《{}》已爬取。'.format(news_title))
 
                     else:
                         try:
@@ -356,6 +360,7 @@ def get_url_info(url_list):
                                          news_title, news_author, news_time))
                             merger.append(open(update_pdf_file, 'rb'))
                             conn.commit()
+                            print('该新闻《{}》已爬取。'.format(news_title))
                         except pymysql.err.DataError:
                             print("html编码错误或值错误！")
                             html_filter = html_filter.encode(encoding='UTF-8', errors='ignore')
@@ -366,10 +371,12 @@ def get_url_info(url_list):
                                          news_title, news_author, news_time))
                             merger.append(open(update_pdf_file, 'rb'))
                             conn.commit()
+                            print('该新闻《{}》已爬取。'.format(news_title))
                 else:
                     print('该新闻《{}》已保存在数据库中！'.format(news_title))
                 sum_i += 1
                 news_count += 1
+                time.sleep(sleep_time)
                 # 清空之前的信息
                 html_filter, news_url, news_title, news_author, news_time = '', '', '', '', ''
 
